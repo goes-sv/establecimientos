@@ -339,7 +339,7 @@ const norm = s => (s||"").toString().toLowerCase()
   .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim();
 
 const FIELD_MATCHERS = {
-  tipo:        h => h==="tipo" || h.includes("tipo de establecimiento") || h.includes("establecimiento") || h.includes("categoria") || h.includes("rubro"),
+  tipo:        h => (h==="tipo" || h.includes("tipo de establecimiento") || h.includes("establecimiento") || h.includes("categoria") || h.includes("rubro")) && !h.includes("nombre"),
   proveedor:   h => h.includes("proveedor"),
   srs:         h => h==="srs" || h.includes("srs") || h.includes("codigo"),
   nombre:      h => h==="sucursal" || h==="nombre" || h==="nombre de sucursal",
@@ -461,12 +461,18 @@ function buildObjects(headers, matrix){
     const idx = hNorm.findIndex(FIELD_MATCHERS[key]);
     if(idx !== -1 && colIndex[key] === undefined) colIndex[key] = idx;
   }
-  if(colIndex.tipo === undefined && colIndex.proveedor !== undefined && colIndex.proveedor > 0){
-    colIndex.tipo = colIndex.proveedor - 1;
+  // nombre: preferir la columna "Nombre"; si no existe, usar "Sucursal"
+  {
+    const ok = i => !hNorm[i].includes("coordinador") && !hNorm[i].includes("responsable");
+    let idx = hNorm.findIndex((h,i)=> ok(i) && (h==="nombre"||h==="nombre de sucursal"||h==="nombre del establecimiento"||h==="nombre comercial"));
+    if(idx===-1) idx = hNorm.findIndex((h,i)=> ok(i) && h.startsWith("nombre"));
+    if(idx===-1) idx = hNorm.findIndex((h,i)=> ok(i) && h==="sucursal");
+    if(idx!==-1) colIndex.nombre = idx;
   }
-  if(colIndex.nombre === undefined || colIndex.nombre === colIndex.tipo){
-    const idx = hNorm.findIndex((h,i)=> i!==colIndex.tipo && h.includes("sucursal") && !h.includes("coordinador"));
-    if(idx !== -1) colIndex.nombre = idx;
+  // tipo: si no vino por encabezado, usar la columna previa a 'proveedor' (sin pisar la de nombre)
+  if(colIndex.tipo === undefined && colIndex.proveedor !== undefined && colIndex.proveedor > 0){
+    const cand = colIndex.proveedor - 1;
+    if(cand !== colIndex.nombre) colIndex.tipo = cand;
   }
   const celIdxs = hNorm.map((h,i)=> h.includes("celular") ? i : -1).filter(i=>i>=0);
   const celAfter = ref => (ref===undefined) ? undefined : celIdxs.find(i => i>ref);
